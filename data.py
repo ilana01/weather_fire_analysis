@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 
 # file paths
-csv1_file_path = "DataFiles/FRNSW_data_export_daily_20250513.csv"  
-csv2_file_path = "DataFiles/combined_attributes.csv" 
+csv1_file_path = "DataFiles/FRNSW_data_export_daily_20250513.csv" 
+csv2_file_path = "DataFiles/combined_attributes.csv"
 
 # expand the '~' to the full path
 csv1_file_path = os.path.expanduser(csv1_file_path)
@@ -201,3 +201,23 @@ plt.xlabel("Actual WIRES_DOWN_INCDS")
 plt.ylabel("Predicted WIRES_DOWN_INCDS")
 plt.title("WIRES_DOWN_INCDS: Actual vs Predicted")
 plt.show()
+
+# =====================================================
+# SECTION 2: LGA Incident Data & Weather for Specific Regions
+# =====================================================
+
+# Read the LGA incident breakdown data
+lga_file_path = os.path.expanduser("DataFiles/LGA_Incidents.csv")
+lga_data = pd.read_csv(lga_file_path)
+
+# Clean the data:
+# Remove commas from numeric columns and convert them to numbers.
+for col in lga_data.columns[1:]:
+    lga_data[col] = lga_data[col].astype(str).str.replace(",", "").str.strip()
+    lga_data[col] = pd.to_numeric(lga_data[col], errors='coerce')
+
+# Drop any rows where "Local Government Area" is missing
+lga_data = lga_data.dropna(subset=["Local Government Area"])
+
+print("\nLGA Incident Data Preview:")
+print(lga_data.head())
