@@ -112,112 +112,210 @@ plt.ylabel("Predicted FIRES_INCDS")
 plt.title("FIRES_INCDS: Actual vs Predicted")
 plt.show()
 
-# ================================================
-# ANALYSIS 2: STORM_RELATED_INCDS vs Weather
-# ================================================
+# =====================================================
+# ANALYSIS 2: Combined Analysis of STORM_RELATED_INCDS and WIRES_DOWN_INCDS
+# =====================================================
 
-# Ensure the STORM_RELATED_INCDS column is numeric
+
+# Ensure the emergency call types are numeric
 merged_data[STORM_INCIDENTS_COLUMN] = pd.to_numeric(merged_data[STORM_INCIDENTS_COLUMN], errors='coerce')
+merged_data[WIRES_DOWN_COLUMN]   = pd.to_numeric(merged_data[WIRES_DOWN_COLUMN], errors='coerce')
 
-# Define weather-related columns (same as before)
-weather_columns = [TEMPERATURE_COLUMN, HUMIDITY_COLUMN, CLOUD_AMOUNT_COLUMN, WIND_SPEED_COLUMN, PRESSURE_COLUMN]
+# Create a dataset for the combined analysis by dropping missing values for predictors and both targets
+combined_data = merged_data.dropna(subset=predictors + [STORM_INCIDENTS_COLUMN, WIRES_DOWN_COLUMN])
+combined_data = combined_data.sort_values("REPORT_DATE")
 
-# For correlation, select STORM_RELATED_INCDS and weather columns, dropping rows with missing data
-columns_storm = [STORM_INCIDENTS_COLUMN] + weather_columns
-storm_data = merged_data.dropna(subset=columns_storm)
+# Prepare predictor variables (X) and multi-target responses (Y)
+X_multi = combined_data[predictors]
+Y_multi = combined_data[[STORM_INCIDENTS_COLUMN, WIRES_DOWN_COLUMN]]
 
-# Calculate and display correlation matrix
-storm_correlation_matrix = storm_data[columns_storm].corr()
-print("\nCorrelation Matrix for STORM_RELATED_INCDS and Weather:")
-print(storm_correlation_matrix)
+# Perform multi-output regression using LinearRegression
+multi_model = LinearRegression()
+multi_model.fit(X_multi, Y_multi)
 
-plt.figure(figsize=(8, 6))
-sns.heatmap(storm_correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f')
-plt.title('Correlation Matrix: Storm Incidents and Weather')
+# Display the coefficients and intercept for each target.
+# multi_model.coef_ shape: (2, n_features) --> first row for storm, second for wires down.
+coefficients = pd.DataFrame(
+    multi_model.coef_,
+    index=[STORM_INCIDENTS_COLUMN, WIRES_DOWN_COLUMN],
+    columns=predictors
+)
+intercepts = pd.Series(multi_model.intercept_, index=[STORM_INCIDENTS_COLUMN, WIRES_DOWN_COLUMN])
+
+print("\nMulti-Output Regression Analysis for Storm and Wires Down Incidents:")
+print("Coefficients:")
+print(coefficients)
+print("\nIntercepts:")
+print(intercepts)
+print("\nOverall R^2 score:", multi_model.score(X_multi, Y_multi))
+
+# Obtain predictions for the multi-output regression model
+Y_multi_pred = multi_model.predict(X_multi)
+
+# Plot actual vs predicted values in subplots
+plt.figure(figsize=(12, 5))
+
+plt.subplot(1, 2, 1)
+plt.scatter(combined_data[STORM_INCIDENTS_COLUMN], Y_multi_pred[:, 0], color='tab:blue', alpha=0.7)
+plt.xlabel("Actual Storm Incidents")
+plt.ylabel("Predicted Storm Incidents")
+plt.title("Storm Incidents: Actual vs Predicted")
+
+plt.subplot(1, 2, 2)
+plt.scatter(combined_data[WIRES_DOWN_COLUMN], Y_multi_pred[:, 1], color='tab:orange', alpha=0.7)
+plt.xlabel("Actual Wires Down Incidents")
+plt.ylabel("Predicted Wires Down Incidents")
+plt.title("Wires Down Incidents: Actual vs Predicted")
+
+plt.tight_layout()
 plt.show()
 
-# Regression analysis for STORM_RELATED_INCDS using selected weather predictors
-storm_predictors = predictors  # reusing the same 3 predictors as before
-storm_regression_data = merged_data.dropna(subset=storm_predictors + [STORM_INCIDENTS_COLUMN])
-X_storm = storm_regression_data[storm_predictors]
-y_storm = storm_regression_data[STORM_INCIDENTS_COLUMN]
+def load_weather_data(filepath, city):
+    """
+    Load a weather CSV/TXT file, drop any extraneous index column,
+    convert the 'Date' column to datetime, and assign a 'City' label.
+    """
+    try:
+        df = pd.read_csv(filepath, encoding='utf-8-sig')
+    except Exception as e:
+        raise FileNotFoundError(f"Error loading {filepath}: {e}")
+    if 'Unnamed: 0' in df.columns:
+        df.drop(columns=['Unnamed: 0'], inplace=True)
+    if 'Date' not in df.columns:
+        raise KeyError(f"Expected a 'Date' column in file: {filepath}")
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df['City'] = city
+    return df
 
-storm_model = LinearRegression()
-storm_model.fit(X_storm, y_storm)
+# Define file paths for the three weather datasets.
+wollongong_fp = os.path.expanduser("DataFiles/combined_Wollongong.csv")
+sydney_fp     = os.path.expanduser("DataFiles/combined_attributes.csv")
+newcastle_fp  = os.path.expanduser("DataFiles/combined_Newcastle.csv")
 
-print("\nRegression Analysis for STORM_RELATED_INCDS:")
-print("Coefficients:", storm_model.coef_)
-print("Intercept:", storm_model.intercept_)
-print("R^2 score:", storm_model.score(X_storm, y_storm))
+# Load each weather dataset.
+wollongong_weather = load_weather_data(wollongong_fp, "Wollongong")
+sydney_weather     = load_weather_data(sydney_fp, "Sydney")
+newcastle_weather  = load_weather_data(newcastle_fp, "Newcastle")
 
-# Plot actual vs predicted for STORM_RELATED_INCDS
-y_storm_pred = storm_model.predict(X_storm)
-plt.figure()
-plt.scatter(y_storm, y_storm_pred)
-plt.xlabel("Actual STORM_RELATED_INCDS")
-plt.ylabel("Predicted STORM_RELATED_INCDS")
-plt.title("STORM_RELATED_INCDS: Actual vs Predicted")
+# Combine all weather data.
+combined_weather = pd.concat([wollongong_weather, sydney_weather, newcastle_weather], ignore_index=True)
+combined_weather.sort_values("Date", inplace=True)
+print("Combined Weather Data Preview:")
+print(combined_weather.head())
+
+# Define key weather metrics.
+weather_cols = ["9am Temperature (°C)", "9am relative humidity (%)", "9am wind speed (km/h)"]
+
+# Replace non-numeric wind speed texts like "Calm" with 0.
+combined_weather["9am wind speed (km/h)"] = combined_weather["9am wind speed (km/h)"].replace(
+    r'(?i)^\s*calm\s*$', "0", regex=True
+)
+for col in weather_cols:
+    combined_weather[col] = pd.to_numeric(combined_weather[col], errors='coerce')
+
+# Aggregate weather data by City (averaging across all daily records).
+weather_by_city = combined_weather.groupby('City')[weather_cols].mean().reset_index()
+print("\nAggregated Weather Data by City:")
+print(weather_by_city)
+
+# =============================================================================
+# PART 2: LOAD, CLEAN, AND AGGREGATE LGA INCIDENT DATA (Yearly Breakdown)
+# =============================================================================
+
+# Load the LGA incidents file.
+lga_filepath = os.path.expanduser("DataFiles/LGA_Incidents.csv")
+try:
+    lga_incidents = pd.read_csv(lga_filepath)
+except Exception as e:
+    raise FileNotFoundError(f"Error loading {lga_filepath}: {e}")
+
+print("\nLGA Incidents Data Preview (Raw):")
+print(lga_incidents.head())
+
+# --- Clean Column Names ---
+# Remove extra whitespace and any quotation marks from column headers.
+lga_incidents.columns = lga_incidents.columns.str.strip().str.replace('"', '')
+
+# Convert numeric columns (all columns except the first) by removing commas and converting to numeric.
+for col in lga_incidents.columns[1:]:
+    lga_incidents[col] = lga_incidents[col].astype(str).str.replace(",", "").str.strip()
+    lga_incidents[col] = pd.to_numeric(lga_incidents[col], errors='coerce')
+
+# Define a mapping from LGA names to City names.
+lga_to_city = {
+    'SYDNEY': 'Sydney',
+    'INNER WEST': 'Sydney',
+    'WAVERLEY': 'Sydney',
+    'WILLLOUGHBY': 'Sydney',
+    'CAMDEN': 'Sydney',
+    'CANTERBURY-BANKSTOWN': 'Sydney',
+    'BLACKTOWN': 'Sydney',
+    'NEWCASTLE': 'Newcastle',
+    'LAKE MACQUARIE': 'Newcastle',
+    'WOLLONGONG': 'Wollongong',
+    'SHELLHARBOUR': 'Wollongong'
+    # Extend the mapping as needed.
+}
+
+# Ensure the incidents file contains the "Local Government Area" column.
+if "Local Government Area" not in lga_incidents.columns:
+    raise KeyError("The incidents file must contain a 'Local Government Area' column.")
+
+# Create a "City" column using the mapping.
+lga_incidents["City"] = lga_incidents["Local Government Area"].map(lga_to_city)
+lga_incidents = lga_incidents.dropna(subset=["City"])
+print("\nLGA Incidents with City Assignment (Preview):")
+print(lga_incidents.head())
+
+# Define the incident column names you want to analyze.
+incident_cols = [
+    "Fires & explosions", 
+    "Storm, floods and other natural disasters & calls for assistance from other agencies",
+    "Total primary incidents"
+]
+
+# Aggregate incident data by City by taking the average across records (if multiple years exist).
+incidents_by_city = lga_incidents.groupby("City")[incident_cols].mean().reset_index()
+print("\nAggregated Incident Data by City (Averages):")
+print(incidents_by_city[["City", "Total primary incidents"]])
+
+# =============================================================================
+# PART 3: VISUALIZATION - GROUPED BAR CHART FOR INCIDENT TYPES BY CITY
+# =============================================================================
+
+# Reshape the incident data to long format for a grouped bar chart.
+incidents_long = pd.melt(incidents_by_city,
+                         id_vars=["City"],
+                         value_vars=incident_cols,
+                         var_name="Incident Type",
+                         value_name="Average Count")
+print("\nIncidents Data (Long Format):")
+print(incidents_long)
+
+sns.set(style="whitegrid")
+plt.figure(figsize=(10, 6))
+ax = sns.barplot(x="City", y="Average Count", hue="Incident Type", data=incidents_long)
+ax.set_title("Average Incident Counts by City (Yearly Breakdown)")
+ax.set_xlabel("City")
+ax.set_ylabel("Average Incident Count")
+plt.legend(title="Incident Type")
+plt.tight_layout()
 plt.show()
 
-# ================================================
-# ANALYSIS 3: WIRES_DOWN_INCDS vs Weather
-# ================================================
+# =============================================================================
+# PART 4: OPTIONAL MERGE & CORRELATION ANALYSIS (City-Level Averages)
+# =============================================================================
 
-# Ensure the WIRES_DOWN_INCDS column is numeric
-merged_data[WIRES_DOWN_COLUMN] = pd.to_numeric(merged_data[WIRES_DOWN_COLUMN], errors='coerce')
+# Merge weather and incident data by City.
+merged_city = pd.merge(weather_by_city, incidents_by_city, on="City", how="inner")
+print("\nMerged Data by City:")
+print(merged_city)
 
-# Prepare data for correlation analysis between WIRES_DOWN_INCDS and weather variables
-columns_wires = [WIRES_DOWN_COLUMN] + weather_columns
-wires_data = merged_data.dropna(subset=columns_wires)
-
-# Calculate and display the correlation matrix
-wires_correlation_matrix = wires_data[columns_wires].corr()
-print("\nCorrelation Matrix for WIRES_DOWN_INCDS and Weather:")
-print(wires_correlation_matrix)
-
-plt.figure(figsize=(8, 6))
-sns.heatmap(wires_correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f')
-plt.title('Correlation Matrix: Wires Down Incidents and Weather')
+# For correlation analysis, select relevant columns.
+cols_for_corr = weather_cols + ["Total primary incidents"]
+corr_matrix = merged_city[cols_for_corr].corr()
+plt.figure(figsize=(6, 5))
+sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f")
+plt.title("Correlation Matrix (City-Level Averages)")
+plt.tight_layout()
 plt.show()
-
-# Regression analysis for WIRES_DOWN_INCDS using the same weather predictors
-wires_regression_data = merged_data.dropna(subset=predictors + [WIRES_DOWN_COLUMN])
-X_wires = wires_regression_data[predictors]
-y_wires = wires_regression_data[WIRES_DOWN_COLUMN]
-
-wires_model = LinearRegression()
-wires_model.fit(X_wires, y_wires)
-
-print("\nRegression Analysis for WIRES_DOWN_INCDS:")
-print("Coefficients:", wires_model.coef_)
-print("Intercept:", wires_model.intercept_)
-print("R^2 score:", wires_model.score(X_wires, y_wires))
-
-# Plot actual vs predicted for WIRES_DOWN_INCDS
-y_wires_pred = wires_model.predict(X_wires)
-plt.figure()
-plt.scatter(y_wires, y_wires_pred)
-plt.xlabel("Actual WIRES_DOWN_INCDS")
-plt.ylabel("Predicted WIRES_DOWN_INCDS")
-plt.title("WIRES_DOWN_INCDS: Actual vs Predicted")
-plt.show()
-
-# =====================================================
-# SECTION 2: LGA Incident Data & Weather for Specific Regions
-# =====================================================
-
-# Read the LGA incident breakdown data
-lga_file_path = os.path.expanduser("DataFiles/LGA_Incidents.csv")
-lga_data = pd.read_csv(lga_file_path)
-
-# Clean the data:
-# Remove commas from numeric columns and convert them to numbers.
-for col in lga_data.columns[1:]:
-    lga_data[col] = lga_data[col].astype(str).str.replace(",", "").str.strip()
-    lga_data[col] = pd.to_numeric(lga_data[col], errors='coerce')
-
-# Drop any rows where "Local Government Area" is missing
-lga_data = lga_data.dropna(subset=["Local Government Area"])
-
-print("\nLGA Incident Data Preview:")
-print(lga_data.head())
