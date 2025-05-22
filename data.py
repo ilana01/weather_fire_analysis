@@ -4,7 +4,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 
-# file paths
+# Define file paths for emergency incidents and weather data
 csv1_file_path = "DataFiles/FRNSW_data_export_daily_20250513.csv" 
 csv2_file_path = "DataFiles/combined_attributes.csv"
 
@@ -27,6 +27,8 @@ csv2_data.rename(columns={'Date': 'REPORT_DATE'}, inplace=True)
 merged_data = pd.merge(csv1_data, csv2_data, on="REPORT_DATE", how="inner")
 # Preview the merged data
 print(merged_data.head())
+
+# DATA CLEANING & PREPROCESSING
 
 # Define constants for column names used in analysis of FIRES_INCDS
 FIRE_INCIDENTS_COLUMN = 'FIRES_INCDS'
@@ -57,9 +59,8 @@ columns_to_check = [
 ]
 merged_data[columns_to_check] = merged_data[columns_to_check].apply(pd.to_numeric, errors='coerce')
 
-# ================================================
+
 # ANALYSIS 1: FIRES_INCDS vs Weather
-# ================================================
 
 # Drop rows with missing values in the key columns
 cleaned_data = merged_data.dropna(subset=columns_to_check)
@@ -112,9 +113,9 @@ plt.ylabel("Predicted FIRES_INCDS")
 plt.title("FIRES_INCDS: Actual vs Predicted")
 plt.show()
 
-# =====================================================
+
 # ANALYSIS 2: Combined Analysis of STORM_RELATED_INCDS and WIRES_DOWN_INCDS
-# =====================================================
+
 
 
 # Ensure the emergency call types are numeric
@@ -171,10 +172,6 @@ plt.tight_layout()
 plt.show()
 
 def load_weather_data(filepath, city):
-    """
-    Load a weather CSV/TXT file, drop any extraneous index column,
-    convert the 'Date' column to datetime, and assign a 'City' label.
-    """
     try:
         df = pd.read_csv(filepath, encoding='utf-8-sig')
     except Exception as e:
@@ -218,9 +215,9 @@ weather_by_city = combined_weather.groupby('City')[weather_cols].mean().reset_in
 print("\nAggregated Weather Data by City:")
 print(weather_by_city)
 
-# =============================================================================
-# PART 2: LOAD, CLEAN, AND AGGREGATE LGA INCIDENT DATA (Yearly Breakdown)
-# =============================================================================
+
+# LOAD, CLEAN, AND AGGREGATE LGA INCIDENT DATA (Yearly Breakdown)
+
 
 # Load the LGA incidents file.
 lga_filepath = os.path.expanduser("DataFiles/LGA_Incidents.csv")
@@ -232,7 +229,7 @@ except Exception as e:
 print("\nLGA Incidents Data Preview (Raw):")
 print(lga_incidents.head())
 
-# --- Clean Column Names ---
+# Clean Column Names
 # Remove extra whitespace and any quotation marks from column headers.
 lga_incidents.columns = lga_incidents.columns.str.strip().str.replace('"', '')
 
@@ -279,9 +276,8 @@ incidents_by_city = lga_incidents.groupby("City")[incident_cols].mean().reset_in
 print("\nAggregated Incident Data by City (Averages):")
 print(incidents_by_city[["City", "Total primary incidents"]])
 
-# =============================================================================
-# PART 3: VISUALIZATION - GROUPED BAR CHART FOR INCIDENT TYPES BY CITY
-# =============================================================================
+
+# VISUALISATION - GROUPED BAR CHART FOR INCIDENT TYPES BY CITY
 
 # Reshape the incident data to long format for a grouped bar chart.
 incidents_long = pd.melt(incidents_by_city,
@@ -302,9 +298,8 @@ plt.legend(title="Incident Type")
 plt.tight_layout()
 plt.show()
 
-# =============================================================================
-# PART 4: OPTIONAL MERGE & CORRELATION ANALYSIS (City-Level Averages)
-# =============================================================================
+# MERGE & CORRELATION ANALYSIS (City-Level Averages)
+
 
 # Merge weather and incident data by City.
 merged_city = pd.merge(weather_by_city, incidents_by_city, on="City", how="inner")
