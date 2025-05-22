@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 
 # file paths
-csv1_file_path = "~/Desktop/DataFiles/FRNSW_data_export_daily_20250513.csv"  
-csv2_file_path = "~/Desktop/DataFiles/combined_attributes.csv" 
+csv1_file_path = "DataFiles/FRNSW_data_export_daily_20250513.csv"  
+csv2_file_path = "DataFiles/combined_attributes.csv" 
 
 # expand the '~' to the full path
 csv1_file_path = os.path.expanduser(csv1_file_path)
@@ -14,23 +14,24 @@ csv2_file_path = os.path.expanduser(csv2_file_path)
 
 # reading in the files
 csv1_data = pd.read_csv(csv1_file_path, encoding='latin1') 
-csv2_data = pd.read_csv(csv2_file_path, encoding='latin1')
+csv2_data = pd.read_csv(csv2_file_path, encoding='utf-8-sig')
 csv2_data = csv2_data.iloc[:, 1:]  # drops the first column
 
 # Convert REPORT_DATE to datetime for consistent merging
 csv1_data['REPORT_DATE'] = pd.to_datetime(csv1_data['REPORT_DATE'])
-csv2_data['REPORT_DATE'] = pd.to_datetime(csv2_data['REPORT_DATE'])
+csv2_data['Date'] = pd.to_datetime(csv2_data['Date'])
 
+# Rename the 'Date' column to match
+csv2_data.rename(columns={'Date': 'REPORT_DATE'}, inplace=True)
 # Merging the dataframes on the REPORT_DATE column
 merged_data = pd.merge(csv1_data, csv2_data, on="REPORT_DATE", how="inner")
-
 # Preview the merged data
 print(merged_data.head())
 
 # Define constants for column names
 FIRE_INCIDENTS_COLUMN = 'FIRES_INCDS'
 WIND_SPEED_COLUMN = '9am wind speed (km/h)'
-TEMPERATURE_COLUMN = '9am Temperature'
+TEMPERATURE_COLUMN = '9am Temperature (°C)'
 HUMIDITY_COLUMN = '9am relative humidity (%)'
 CLOUD_AMOUNT_COLUMN = '9am cloud amount (oktas)'
 PRESSURE_COLUMN = '9am MSL pressure (hPa)'
@@ -75,13 +76,13 @@ sns.histplot(merged_data['FIRES_INCDS'], bins=20, kde=True)
 plt.show()
 
 #pairplot to spot relationship
-sns.pairplot(merged_data[['FIRES_INCDS', '9am Temperature', '9am relative humidity (%)', '9am wind speed (km/h)']])
+sns.pairplot(merged_data[['FIRES_INCDS', '9am Temperature (°C)', '9am relative humidity (%)', '9am wind speed (km/h)']])
 plt.show()
 
 
 
 # Regression analysis
-predictors = ["9am relative humidity (%)", "9am wind speed (km/h)", "9am Temperature"]  
+predictors = ["9am relative humidity (%)", "9am wind speed (km/h)", "9am Temperature (°C)"]  
 target = "FIRES_INCDS"  
 
 regression_data = merged_data.dropna(subset=predictors + [target])
